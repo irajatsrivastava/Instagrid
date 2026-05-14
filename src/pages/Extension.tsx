@@ -31,7 +31,8 @@ export default function ExtensionPage() {
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["https://www.instagram.com/*"],
   "action": {
-    "default_title": "Open InstaGrid Sidebar"
+    "default_title": "Open InstaGrid Sidebar",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
@@ -46,6 +47,7 @@ export default function ExtensionPage() {
 }`;
 
   const backgroundJs = `chrome.action.onClicked.addListener(async (tab) => {
+  console.log("InstaGrid: Icon clicked on tab", tab.id);
   if (!tab.url) return;
   if (!tab.url.includes("instagram.com")) {
     console.warn("InstaGrid: Action only allowed on Instagram.");
@@ -53,21 +55,34 @@ export default function ExtensionPage() {
   }
   
   try {
-    // Attempt to ping the content script first
-    await chrome.tabs.sendMessage(tab.id, { action: "ping" });
+    // Attempt to ping the content script first to see if it's alive
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: "ping" });
+      console.log("InstaGrid: Content script responded to ping.");
+    } catch (pingErr) {
+      console.warn("InstaGrid: Content script not responding, attempting re-injection.");
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["content.js"]
+      });
+      await chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        files: ["sidebar.css"]
+      });
+    }
+
     await chrome.tabs.sendMessage(tab.id, { action: "toggle" });
   } catch (err) {
-    console.error("InstaGrid: Sidebar not responding or not injected yet.", err);
-    // Generic injection fallback if not responding
+    console.error("InstaGrid: Failed to communicate with content script.", err);
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => {
-          alert("InstaGrid Node: Connection lost or page context stale. Please refresh the page to restart the capture engine.");
+          alert("InstaGrid Node: System initialization pending. Please refresh the Instagram page once to activate the extension engine.");
         }
       });
     } catch (e) {
-      console.error("InstaGrid: Failed to execute fallback script.", e);
+      console.error("InstaGrid: Failed to execute fallback alert.", e);
     }
   }
 });`;
@@ -220,10 +235,10 @@ function createSidebar() {
   document.getElementById('ig-godmode-btn').onclick = runGodmodeScrape;
   document.getElementById('ig-excel-btn').onclick = downloadExcel;
   document.getElementById('ig-dashboard-btn').onclick = () => {
-    window.open('https://ais-pre-bgvphqc6zenhigtopfln4s-196850452963.asia-southeast1.run.app/dashboard', '_blank');
+    window.open('{{APP_URL}}/dashboard', '_blank');
   };
   document.getElementById('ig-ai-go').onclick = () => {
-    window.open('https://ais-pre-bgvphqc6zenhigtopfln4s-196850452963.asia-southeast1.run.app/dashboard', '_blank');
+    window.open('{{APP_URL}}/dashboard', '_blank');
   };
 
   const showBtn = document.createElement('div');
@@ -674,9 +689,14 @@ document.getElementById('godmodeBtn').addEventListener('click', async () => {
     setDownloading(true);
     try {
       const zip = new JSZip();
+      const currentOrigin = window.location.origin;
+      
+      // Inject current origin into scripts
+      const processedContentJs = contentJs.replace(/\{\{APP_URL\}\}/g, currentOrigin);
+      
       zip.file("manifest.json", manifest);
       zip.file("background.js", backgroundJs);
-      zip.file("content.js", contentJs);
+      zip.file("content.js", processedContentJs);
       zip.file("sidebar.css", sidebarCss);
       zip.file("popup.html", popupHtml);
       zip.file("popup.js", popupJs);
