@@ -12,7 +12,11 @@ import {
   Copy,
   ClipboardCheck,
   History,
-  Trash2
+  Trash2,
+  Zap,
+  Sparkles,
+  BarChart3,
+  Tag
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from "motion/react";
@@ -29,7 +33,7 @@ import {
   doc 
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { extractCommentsFromHtml } from "../services/geminiService";
+import { extractCommentsFromHtml, analyzeComments, AnalysisResult } from "../services/analysisService";
 
 enum OperationType {
   CREATE = 'create',
@@ -71,10 +75,25 @@ export default function Dashboard() {
   const [history, setHistory] = useState<ExportHistory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  const [showGuide, setShowGuide] = useState(true);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
   const filteredComments = comments.filter(c => 
     c.username.toLowerCase().includes(searchQuery.toLowerCase()) || 
     c.text.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  useEffect(() => {
+    // Check if dismissed previously
+    const dismissed = localStorage.getItem('instagrid_guide_dismissed');
+    if (dismissed) setShowGuide(false);
+  }, []);
+
+  const dismissGuide = () => {
+    setShowGuide(false);
+    localStorage.setItem('instagrid_guide_dismissed', 'true');
+  };
 
   useEffect(() => {
     if (user) {
@@ -161,6 +180,21 @@ export default function Dashboard() {
     }
   };
 
+  const handleAnalysis = async () => {
+    if (comments.length === 0) return;
+    setAnalyzing(true);
+    setAnalysis(null);
+    try {
+      const dataToAnalyze = comments.map(c => ({ Username: c.username, Comment: c.text }));
+      const result = await analyzeComments(dataToAnalyze);
+      setAnalysis(result);
+    } catch (err) {
+      setError("Logic analysis engine encountered an error.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const exportToExcel = () => {
     if (filteredComments.length === 0) return;
 
@@ -240,6 +274,52 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-8 w-full">
+      {/* Quick Start Guide */}
+      <AnimatePresence>
+        {showGuide && (
+          <motion.div
+            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+            animate={{ height: "auto", opacity: 1, marginTop: 0 }}
+            exit={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
+            className="overflow-hidden"
+          >
+             <div className="p-6 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl text-white relative shadow-lg shadow-indigo-100 mb-2">
+                <button 
+                  onClick={dismissGuide}
+                  className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  ×
+                </button>
+                <div className="flex items-start gap-6">
+                   <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 backdrop-blur-sm">
+                      <Zap size={32} />
+                   </div>
+                   <div>
+                      <h2 className="text-xl font-bold mb-2">Welcome to InstaGrid Dashboard</h2>
+                      <p className="text-indigo-100 text-sm max-w-2xl mb-6">
+                        Follow these simple steps to start extracting leads from Instagram in real-time.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="flex items-center gap-3">
+                           <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-xs">1</div>
+                           <p className="text-xs text-indigo-50 font-medium">Paste a Post/Reel URL in the console below.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                           <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-xs">2</div>
+                           <p className="text-xs text-indigo-50 font-medium">Hit "Analyze" to trigger the scraper node.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                           <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-xs">3</div>
+                           <p className="text-xs text-indigo-50 font-medium">Export results to CSV, Excel, or JSON formats.</p>
+                        </div>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* History Panel */}
       <AnimatePresence>
         {showHistory && (
@@ -354,6 +434,79 @@ export default function Dashboard() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Logic Analysis Hub Section */}
+      {comments.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm overflow-hidden relative">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-1">
+                <BarChart3 size={16} className="text-indigo-500" /> Logic Research Node
+              </h2>
+              <p className="text-xs text-slate-500">Structured pattern analysis via rule-based sentiment and keyword indexing.</p>
+            </div>
+            <button 
+              onClick={handleAnalysis}
+              disabled={analyzing}
+              className="px-6 py-2 bg-slate-800 hover:bg-black text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
+            >
+              {analyzing ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} />}
+              {analyzing ? "Synthesizing Data..." : "Run Logic Analysis"}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {analysis && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+              >
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase mb-3">
+                    <BarChart3 size={14} /> Sentiment
+                  </div>
+                  <div className="text-2xl font-black text-slate-800 tracking-tight">{analysis.sentiment}</div>
+                </div>
+
+                <div className="lg:col-span-1 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase mb-3">
+                    <Tag size={14} /> Top Keywords
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.keywords.slice(0, 8).map((kw, i) => (
+                      <span key={i} className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-600">
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 lg:col-span-2 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase mb-3">
+                    <History size={14} /> Executive Summary
+                  </div>
+                  <p className="text-sm text-slate-600 leading-relaxed italic">
+                    "{analysis.summary}"
+                  </p>
+                </div>
+
+                <div className="md:col-span-2 lg:col-span-4 p-4 bg-white border border-slate-100 rounded-xl">
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Deep Themes Identified</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {analysis.themes.map((theme, i) => (
+                        <div key={i} className="p-4 border border-slate-100 rounded-lg bg-slate-50/50">
+                          <h3 className="font-bold text-slate-800 text-sm mb-1">{theme.title}</h3>
+                          <p className="text-[10px] text-slate-500 leading-normal">{theme.reasoning}</p>
+                        </div>
+                      ))}
+                    </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Step 2: Data Preview */}
       <div className="flex-1 bg-white rounded-xl border border-slate-200 flex flex-col shadow-sm min-h-[400px]">

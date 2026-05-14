@@ -141,8 +141,8 @@ export default function Landing() {
               <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-slate-100 mb-6">
                 <Zap size={24} />
               </div>
-              <h3 className="text-xl font-bold mb-4">AI Recovery</h3>
-              <p className="text-slate-500 leading-relaxed">Advanced Gemini-powered engine extracts data even when traditional scrapers are blocked by Instagram's wall.</p>
+              <h3 className="text-xl font-bold mb-4">Logic Recovery</h3>
+              <p className="text-slate-500 leading-relaxed">Advanced logic-based engine extracts and analyzes data even when traditional scrapers are blocked by Instagram's wall.</p>
             </div>
 
             <div className="p-8 rounded-3xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition-colors">
