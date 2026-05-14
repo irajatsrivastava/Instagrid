@@ -66,7 +66,16 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await signInWithPopup(auth, provider);
     } catch (error: any) {
       console.error("Sign in error:", error);
-      setError(error.message || "Failed to sign in. Please try opening in a new tab.");
+      
+      let friendlyMessage = error.message || "Failed to sign in. Please try opening in a new tab.";
+      
+      if (error.code === 'auth/unauthorized-domain') {
+        friendlyMessage = "Unauthorized Domain: Please copy '" + window.location.hostname + "' and add it to your Authorized Domains in the Firebase Console (Authentication > Settings > Authorized domains).";
+      } else if (error.code === 'auth/popup-blocked') {
+        friendlyMessage = "Popup blocked! Please allow popups for this site or open in a new tab.";
+      }
+      
+      setError(friendlyMessage);
     }
   };
 

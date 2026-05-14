@@ -281,31 +281,43 @@ async function runGodmodeScrape() {
     }
 
     statusLine.innerText = "Analyzing page node paths...";
-    let commentBox = document.querySelector('ul._a9z6') || document.querySelector('div[role="dialog"] ul');
     
+    // Try to find the comment container - Reels and Posts have different layouts
+    let commentBox = document.querySelector('ul._a9z6, div[role="dialog"] ul, div.x1iyjqo2.x1n2onr6.x1h87l8u, div._a9zs, .x1iyjqo2[role="dialog"]');
+    
+    // Check for Reels specific side panel
+    const reelsComments = document.querySelector('div.x168nmei.x13lgm5w.x1n2onr6, div.x1iyjqo2.x1n2onr6.x1h87l8u, div.x78zum5.x1q0g3np.x1iyjqo2.x1qughib');
+    if (reelsComments) commentBox = reelsComments;
+
     if (!commentBox) {
-      statusLine.innerText = "Searching for access nodes...";
-      const commentIcon = document.querySelector('svg[aria-label="Comment"], svg[aria-label="Add a comment"]');
+      statusLine.innerText = "Targeting interaction nodes...";
+      const commentBtns = Array.from(document.querySelectorAll('button, div[role="button"]'));
+      let targetBtn = commentBtns.find(b => 
+        b.innerText.toLowerCase().includes('comment') || 
+        b.querySelector('svg[aria-label*="Comment"]') ||
+        b.ariaLabel?.toLowerCase().includes('comment')
+      );
       
-      if (commentIcon) {
-        const btn = commentIcon.closest('button') || commentIcon.parentElement;
-        if (btn) {
-          statusLine.innerText = "Opening comment layer...";
-          btn.click();
-          await new Promise(r => setTimeout(r, 2000));
-          commentBox = document.querySelector('ul._a9z6') || document.querySelector('div[role="dialog"] ul');
+      if (targetBtn) {
+        statusLine.innerText = "Opening comment stream...";
+        targetBtn.click();
+        await new Promise(r => setTimeout(r, 4000)); // Longer wait for Reels
+        commentBox = document.querySelector('ul._a9z6, div[role="dialog"] ul, div.x1iyjqo2.x1n2onr6.x1h87l8u');
+      } else {
+        // Fallback: try to find the comment icon svg directly
+        const svg = document.querySelector('svg[aria-label="Comment"]');
+        if (svg) {
+          statusLine.innerText = "Targeting specialized SVG node...";
+          svg.closest('button')?.click();
+          await new Promise(r => setTimeout(r, 4000));
+          commentBox = document.querySelector('ul._a9z6, div[role="dialog"] ul, div.x1iyjqo2.x1n2onr6.x1h87l8u');
         }
       }
     }
 
-    if (!commentBox) {
-        console.warn("InstaGrid: Core comment container not found. Instagram DOM might have changed.");
-        // Continue anyway as fallback, maybe page is scrollable body
-    }
-
     // 2. Persistent Auto-Scrolling & Aggressive Extraction
     let stagnantCount = 0;
-    const iterations = 60; 
+    const iterations = 100; 
 
     for (let i = 0; i < iterations; i++) {
       if (!isScraping) break;
@@ -313,28 +325,36 @@ async function runGodmodeScrape() {
       progFill.style.width = ((i+1)/iterations)*100 + "%";
       
       try {
-        // Aggressive Data Extraction
-        const containers = document.querySelectorAll('ul._a9z6 li, div[role="menuitem"], div[role="dialog"] li, .x1lliihq.x1plvlek.xryxfnj.x1n2onr6');
+        // Aggressive Data Extraction - Use multiple selector patterns
+        const containers = document.querySelectorAll(
+          'ul._a9z6 li, ' + 
+          'div[role="menuitem"], ' +
+          'div[role="dialog"] li, ' +
+          '.x1lliihq.x1plvlek.xryxfnj.x1n2onr6, ' +
+          'div.x1r8u4bd.x1n2onr6.x1h87l8u, ' +
+          'div.x1iyjqo2.x1n2onr6.x1h87l8u div.x1n2onr6' 
+        );
         
-        if (containers.length === 0 && i > 5) {
-            console.warn("InstaGrid: No containers found in step " + i);
-        }
-
         containers.forEach(el => {
-          const userEl = el.querySelector('h3._a9zc, a.x1i10hfl, span._ap3a, ._ap3a');
-          const textEl = el.querySelector('div._a9zs, span.x1lliihq, .x1lliihq');
+          // Look for usernames in links or bold spans
+          const userEl = el.querySelector('h3._a9zc, a.x1i10hfl, span._ap3a, ._ap3a, a[role="link"], span.xt0psk2 a');
+          const textEl = el.querySelector('div._a9zs, span.x1lliihq, .x1lliihq, div.x1n2onr6, span._aade');
           
           if (userEl && textEl) {
-            const user = userEl.innerText.replace('Verified', '').trim();
+            const user = userEl.innerText.replace('Verified', '').replace('•', '').trim();
             const text = textEl.innerText.trim();
             
             if (user.length > 0 && user.length < 50 && text.length > 0 && !processed.has(user + text)) {
-              scrapedData.push({ 
-                Username: '@' + user, 
-                Comment: text.substring(0, 500).replace(/\\n/g, ' '), 
-                Captured: new Date().toLocaleTimeString() 
-              });
-              processed.add(user + text);
+               // Basic heuristic to skip buttons like "Reply", "View replies", etc.
+               const isSystemText = text === "Reply" || text.includes("View") || text.includes("See") || text === "Pinned";
+               if (!isSystemText && user.split(' ').length < 3) {
+                  scrapedData.push({ 
+                    Username: '@' + user.split('\\n')[0].replace(/\\s/g, ''), 
+                    Comment: text.substring(0, 500).replace(/\\n/g, ' '), 
+                    Captured: new Date().toLocaleTimeString() 
+                  });
+                  processed.add(user + text);
+               }
             }
           }
         });
@@ -347,28 +367,40 @@ async function runGodmodeScrape() {
 
       const scrollArea = document.querySelector('ul._a9z6') || 
                          document.querySelector('div[role="dialog"] .x1iyjqo2') ||
+                         document.querySelector('div.x1iyjqo2.x1n2onr6.x1h87l8u') ||
+                         document.querySelector('div.x78zum5.x1q0g3np.x1iyjqo2.x1qughib') ||
                          document.body;
 
       const prevPos = scrollArea.scrollTop || window.scrollY;
       
       try {
         if (scrollArea === document.body) {
-          window.scrollBy(0, 1200);
+          window.scrollBy(0, 1500);
         } else {
-          scrollArea.scrollTop += 1400;
+          scrollArea.scrollTop += 2000; 
+        }
+        
+        // Also click "Load more" or "View all" if found
+        const loadMore = Array.from(document.querySelectorAll('svg[aria-label="Load more comments"], ._abn- svg, span.x1lliihq'));
+        const targetLoad = loadMore.find(el => 
+            el.ariaLabel === "Load more comments" || 
+            (el.tagName === 'SPAN' && el.innerText.toLowerCase().includes('view all'))
+        );
+        if (targetLoad) {
+            targetLoad.closest('button')?.click() || targetLoad.click();
         }
       } catch (scrollErr) {
         console.error("InstaGrid: Scroll control error:", scrollErr);
       }
       
-      await new Promise(r => setTimeout(r, 1400));
+      await new Promise(r => setTimeout(r, 1500));
 
       const currPos = scrollArea.scrollTop || window.scrollY;
-      if (Math.abs(currPos - prevPos) < 20) stagnantCount++;
+      if (Math.abs(currPos - prevPos) < 10) stagnantCount++;
       else stagnantCount = 0;
 
-      if (stagnantCount > 6) {
-          statusLine.innerText = "End of feed reached.";
+      if (stagnantCount > 10) {
+          statusLine.innerText = "End of visible nodes reached.";
           break; 
       }
     }
