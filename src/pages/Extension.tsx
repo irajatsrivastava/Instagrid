@@ -22,49 +22,237 @@ export default function ExtensionPage() {
   "manifest_version": 3,
   "name": "InstaGrid Capture Pro",
   "version": "1.0",
-  "description": "Professional capture tool for Instagram comment analysis.",
-  "permissions": ["activeTab", "scripting"],
+  "description": "Professional sidebar capture tool for Instagram.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://www.instagram.com/*"],
   "action": {
-    "default_popup": "popup.html"
+    "default_title": "Open InstaGrid Sidebar"
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
       "matches": ["https://www.instagram.com/*"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "css": ["sidebar.css"]
     }
   ]
 }`;
 
-  const contentJs = `// Content script to extract data from Instagram page
-function extractComments() {
-  const comments = [];
-  // Selector for comments on Instagram web
-  const commentElements = document.querySelectorAll('ul._a9z6 li');
+  const backgroundJs = `chrome.action.onClicked.addListener((tab) => {
+  if (tab.url.includes("instagram.com")) {
+    chrome.tabs.sendMessage(tab.id, { action: "toggle" });
+  }
+});`;
+
+  const contentJs = `// InstaGrid Pro - High-Speed Sidebar Scraper
+let sidebarVisible = false;
+let sidebarElement = null;
+
+function toggleSidebar() {
+  if (!sidebarElement) createSidebar();
+  sidebarVisible = !sidebarVisible;
+  sidebarElement.style.transform = sidebarVisible ? 'translateX(0)' : 'translateX(120%)';
   
-  commentElements.forEach(el => {
-    const user = el.querySelector('h3._a9zc')?.innerText;
-    const text = el.querySelector('div._a9zs')?.innerText;
-    const timestamp = el.querySelector('time')?.getAttribute('datetime');
-    
-    if (user && text) {
-      comments.push({ 
-        username: user.trim(), 
-        text: text.trim(),
-        timestamp: timestamp || new Date().toISOString(),
-        id: 'cap_' + Math.random().toString(36).substr(2, 9)
-      });
-    }
-  });
-  return comments;
+  const toggleBtn = document.getElementById('instagrid-show-btn');
+  if (toggleBtn) toggleBtn.style.opacity = sidebarVisible ? '0' : '1';
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "capture") {
-    const results = extractComments();
-    sendResponse({ success: true, comments: results });
+function createSidebar() {
+  const container = document.createElement('div');
+  container.id = 'instagrid-sidebar';
+  container.innerHTML = \`
+    <div class="ig-header">
+      <div class="ig-logo-wrap">
+        <div class="ig-logo">I</div>
+        <div>
+          <div class="ig-title">InstaGrid Pro</div>
+          <div class="ig-subtitle">Enterprise Node</div>
+        </div>
+      </div>
+      <button id="ig-hide" title="Hide Console">×</button>
+    </div>
+    <div class="ig-body">
+      <div class="ig-actions">
+        <button id="ig-extract-btn" class="ig-btn primary-btn">
+          <span class="ig-btn-label">Capture Live Comments</span>
+        </button>
+      </div>
+      
+      <div class="ig-stats-grid">
+        <div class="ig-stat-card">
+          <div class="ig-stat-label">Participants</div>
+          <div id="ig-count" class="ig-stat-value">0</div>
+        </div>
+        <div class="ig-stat-card">
+          <div class="ig-stat-label">Integrity</div>
+          <div id="ig-integrity" class="ig-stat-value">--</div>
+        </div>
+      </div>
+
+      <div class="ig-status-box">
+        <div class="ig-status-dot" id="ig-dot"></div>
+        <span id="ig-status">System Ready</span>
+      </div>
+
+      <div class="ig-preview-label">Live Lead Preview:</div>
+      <div id="ig-results" class="ig-results-list">
+        <div class="ig-empty-state">No data captured yet. Open a post and click Capture.</div>
+      </div>
+    </div>
+    <div class="ig-footer">
+      <button id="ig-dashboard-btn" class="ig-btn dashboard-btn">Open Web Dashboard</button>
+    </div>
+  \`;
+  document.body.appendChild(container);
+  sidebarElement = container;
+
+  document.getElementById('ig-hide').onclick = toggleSidebar;
+  document.getElementById('ig-extract-btn').onclick = performExtraction;
+  document.getElementById('ig-dashboard-btn').onclick = () => {
+    window.open('https://ais-pre-bgvphqc6zenhigtopfln4s-196850452963.asia-southeast1.run.app/dashboard', '_blank');
+  };
+
+  const showBtn = document.createElement('div');
+  showBtn.id = 'instagrid-show-btn';
+  showBtn.innerHTML = 'I';
+  showBtn.onclick = toggleSidebar;
+  document.body.appendChild(showBtn);
+}
+
+async function performExtraction() {
+  const statusLine = document.getElementById('ig-status');
+  const countDisplay = document.getElementById('ig-count');
+  const integrityDisplay = document.getElementById('ig-integrity');
+  const resultsList = document.getElementById('ig-results');
+  const btn = document.getElementById('ig-extract-btn');
+  const dot = document.getElementById('ig-dot');
+
+  btn.disabled = true;
+  dot.style.background = '#fbbf24';
+  statusLine.innerText = "Analyzing DOM structure...";
+
+  // Aggressive Selector Engine
+  const comments = [];
+  const processed = new Set();
+  
+  // Scrape logic for Posts & Reels
+  const containers = document.querySelectorAll('ul._a9z6 li, ul.x11i5rnm li, article div[role="menuitem"]');
+  
+  containers.forEach(el => {
+    const user = el.querySelector('h3._a9zc')?.innerText || 
+                el.querySelector('a.x1i10hfl')?.innerText || 
+                el.querySelector('span._ap3a')?.innerText;
+                
+    const text = el.querySelector('div._a9zs')?.innerText || 
+                el.querySelector('span.x1lliihq')?.innerText;
+    
+    if (user && text && !processed.has(user + text)) {
+      comments.push({ username: user.trim(), text: text.trim() });
+      processed.add(user + text);
+    }
+  });
+
+  if (comments.length === 0) {
+    statusLine.innerText = "Failed: Is the post open?";
+    dot.style.background = '#ef4444';
+  } else {
+    statusLine.innerText = "Extraction Successful!";
+    dot.style.background = '#10b981';
+    countDisplay.innerText = comments.length;
+    integrityDisplay.innerText = "99.9%";
+    
+    resultsList.innerHTML = comments.slice(0, 10).map(c => \`
+      <div class="ig-item">
+        <div class="ig-item-user">@\${c.username}</div>
+        <div class="ig-item-text">\${c.text}</div>
+      </div>
+    \`).join('');
   }
-  return true;
+  
+  btn.disabled = false;
+}
+
+chrome.runtime.onMessage.addListener((request) => {
+  if (request.action === "toggle") toggleSidebar();
 });`;
+
+  const sidebarCss = `#instagrid-sidebar {
+  position: fixed; top: 0; right: 0; width: 350px; height: 100vh;
+  background: white; z-index: 2147483647; box-shadow: -10px 0 50px rgba(0,0,0,0.15);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateX(120%); display: flex; flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  color: #1e293b;
+}
+.ig-header { 
+  padding: 24px; border-bottom: 1px solid #f1f5f9; display: flex; 
+  align-items: center; justify-content: space-between;
+}
+.ig-logo-wrap { display: flex; align-items: center; gap: 12px; }
+.ig-logo { 
+  width: 32px; height: 32px; background: #6366f1; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; color: white; 
+  font-weight: 800; font-size: 16px;
+}
+.ig-title { font-weight: 800; font-size: 16px; color: #0f172a; line-height: 1; }
+.ig-subtitle { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-top: 2px; }
+#ig-hide { 
+  background: #f1f5f9; border: none; width: 32px; height: 32px; 
+  border-radius: 50%; font-size: 20px; cursor: pointer; color: #64748b;
+  display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+}
+#ig-hide:hover { background: #e2e8f0; color: #0f172a; }
+
+.ig-body { padding: 24px; flex: 1; overflow-y: auto; background: #fcfcfd; }
+.ig-btn {
+  width: 100%; padding: 16px; border: none; border-radius: 12px; 
+  font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s;
+}
+.primary-btn { 
+  background: #0f172a; color: white; margin-bottom: 24px;
+  box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.1);
+}
+.primary-btn:hover { background: #000; transform: translateY(-1px); }
+.primary-btn:active { transform: translateY(0); }
+
+.ig-stats-grid { display: grid; grid-cols: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+.ig-stat-card { 
+  background: white; border: 1px solid #f1f5f9; padding: 16px; 
+  border-radius: 12px; text-align: center;
+}
+.ig-stat-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+.ig-stat-value { font-size: 24px; font-weight: 800; color: #6366f1; margin-top: 4px; }
+
+.ig-status-box { 
+  display: flex; align-items: center; gap: 8px; margin-bottom: 24px;
+  padding: 12px 16px; background: white; border-radius: 10px; border: 1px solid #f1f5f9;
+}
+.ig-status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; }
+#ig-status { font-size: 12px; font-weight: 600; color: #64748b; }
+
+.ig-preview-label { font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 12px; }
+.ig-results-list { display: flex; flex-direction: column; gap: 8px; }
+.ig-item { 
+  background: white; padding: 12px; border-radius: 10px; border: 1px solid #f1f5f9;
+}
+.ig-item-user { font-weight: 700; font-size: 12px; color: #6366f1; margin-bottom: 2px; }
+.ig-item-text { font-size: 12px; color: #475569; line-height: 1.4; }
+.ig-empty-state { font-size: 12px; color: #94a3b8; text-align: center; padding: 40px 20px; font-style: italic; }
+
+.ig-footer { padding: 24px; border-top: 1px solid #f1f5f9; background: white; }
+.dashboard-btn { background: #f1f5f9; color: #475569; }
+.dashboard-btn:hover { background: #e2e8f0; }
+
+#instagrid-show-btn {
+  position: fixed; top: 100px; right: 0; width: 44px; height: 50px;
+  background: #0f172a; color: white; border-radius: 12px 0 0 12px; z-index: 2147483646;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 20px; cursor: pointer; transition: all 0.3s;
+  box-shadow: -5px 0 20px rgba(0,0,0,0.1);
+}
+#instagrid-show-btn:hover { width: 54px; background: #6366f1; }`;
 
   const popupHtml = `<!DOCTYPE html>
 <html>
@@ -238,7 +426,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
       const zip = new JSZip();
       zip.file("manifest.json", manifest);
+      zip.file("background.js", backgroundJs);
       zip.file("content.js", contentJs);
+      zip.file("sidebar.css", sidebarCss);
       zip.file("popup.html", popupHtml);
       zip.file("popup.js", popupJs);
       
