@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user account information and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "Export": {
+      "title": "Export History",
+      "description": "Records of previous Instagram comment exports.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "shortcode": { "type": "string" },
+        "url": { "type": "string" },
+        "commentCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "shortcode", "url", "commentCount", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles accessible only by the owner."
+    },
+    "/exports/{exportId}": {
+      "schema": "Export",
+      "description": "Export metadata recorded by users."
+    }
+  }
+}
